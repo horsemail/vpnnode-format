@@ -7,5 +7,5 @@
 5、节点输出格式为base64。<br>
 
 
-#可以直接cloudflare worker 部署。
-绑定域名后，使用格式为 https://域名/https://订阅链接。
+#可以直接cloudflare worker 部署。<br>
+绑定域名后，使用格式为 https://域名/https://订阅链接。<br>
