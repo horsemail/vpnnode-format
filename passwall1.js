@@ -4,6 +4,8 @@ export default {
     const targetUrl = decodeURIComponent(url.pathname.slice(1) + url.search);
     let logs = [];
 
+    logs.push(`输入的URL: ${targetUrl}`);
+
     // 验证目标URL是否为有效的HTTP或HTTPS链接
     if (!/^https?:\/\//.test(targetUrl)) {
       logs.push(`无效的 URL 格式: ${targetUrl}`);
@@ -73,15 +75,15 @@ export default {
         return new Response(`订阅中没有有效的节点\n\n日志:\n${logs.join("\n")}`, { status: 400 });
       }
 
-      // 如果节点数量不足10个，随机复制补充到10个
-      while (nodes.length < 10) {
+      // 随机选取10个节点，如果不足10个，随机补齐到10个
+      const selectedNodes = [];
+      while (selectedNodes.length < 10) {
         const randomIndex = Math.floor(Math.random() * nodes.length);
-        const node = nodes[randomIndex];
-        nodes.push(node);
+        selectedNodes.push(nodes[randomIndex]);
       }
 
       // 处理节点名称
-      const finalNodes = nodes.slice(0, 10).map((node, index) => {
+      const finalNodes = selectedNodes.map((node, index) => {
         const nameIndex = `节点${String(index + 1).padStart(2, "0")}`;
         if (node.startsWith("vmess://")) {
           try {
