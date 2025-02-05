@@ -1,10 +1,21 @@
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    const targetUrl = decodeURIComponent(url.pathname.slice(1) + url.search);
-    let logs = [];
+    const pathParts = url.pathname.slice(1).split('/');
+    let nodeCount = 10;
+    let targetUrl = "";
 
+    // 检查路径的第一部分是否是有效的数字
+    if (!isNaN(pathParts[0])) {
+      nodeCount = parseInt(pathParts[0], 10);
+      targetUrl = decodeURIComponent(pathParts.slice(1).join('/')) + url.search;
+    } else {
+      targetUrl = decodeURIComponent(url.pathname.slice(1) + url.search);
+    }
+
+    let logs = [];
     logs.push(`输入的URL: ${targetUrl}`);
+    logs.push(`节点数量: ${nodeCount}`);
 
     // 验证目标URL是否为有效的HTTP或HTTPS链接
     if (!/^https?:\/\//.test(targetUrl)) {
@@ -75,9 +86,9 @@ export default {
         return new Response(`订阅中没有有效的节点\n\n日志:\n${logs.join("\n")}`, { status: 400 });
       }
 
-      // 随机选取10个节点，如果不足10个，随机补齐到10个
+      // 随机选取指定数量的节点，如果不足，随机补齐到指定数量
       const selectedNodes = [];
-      while (selectedNodes.length < 10) {
+      while (selectedNodes.length < nodeCount) {
         const randomIndex = Math.floor(Math.random() * nodes.length);
         selectedNodes.push(nodes[randomIndex]);
       }
