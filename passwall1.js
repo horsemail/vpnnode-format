@@ -5,7 +5,6 @@ export default {
     let nodeCount = 10;
     let targetUrl = "";
 
-    // 检查路径的第一部分是否是有效的数字
     if (!isNaN(pathParts[0])) {
       nodeCount = parseInt(pathParts[0], 10);
       targetUrl = decodeURIComponent(pathParts.slice(1).join('/')) + url.search;
@@ -13,14 +12,8 @@ export default {
       targetUrl = decodeURIComponent(url.pathname.slice(1) + url.search);
     }
 
-    let logs = [];
-    logs.push(`输入的URL: ${targetUrl}`);
-    logs.push(`节点数量: ${nodeCount}`);
-
-    // 验证目标URL是否为有效的HTTP或HTTPS链接
     if (!/^https?:\/\//.test(targetUrl)) {
-      logs.push(`无效的 URL 格式: ${targetUrl}`);
-      return new Response(`无效的 URL 格式\n\n日志:\n${logs.join("\n")}`, { status: 400 });
+      return new Response(`无效的 URL 格式`, { status: 400 });
     }
 
     try {
@@ -32,22 +25,17 @@ export default {
       });
 
       if (!response.ok) {
-        logs.push(`无法访问目标链接: ${targetUrl}, 状态码: ${response.status}, 状态文本: ${response.statusText}`);
-        return new Response(`无法访问目标链接\n\n日志:\n${logs.join("\n")}`, { status: 500 });
+        return new Response(`无法访问目标链接`, { status: 500 });
       }
 
       const content = await response.text();
-      logs.push(`成功获取内容: ${content.substring(0, 100)}...`);
 
       let nodes = [];
       const base64Regex = /^[A-Za-z0-9+/=\s]+$/;
 
       if (base64Regex.test(content.trim())) {
         try {
-          // 尝试解码Base64内容
           const decodedContent = atob(content.replace(/\s+/g, ''));
-          logs.push(`Base64 解码成功: ${decodedContent.substring(0, 100)}...`);
-          
           nodes = decodedContent
             .split("\n")
             .map((line) => line.trim())
@@ -60,8 +48,7 @@ export default {
                 line.startsWith("hysteria://")
             );
         } catch (e) {
-          logs.push(`Base64 解码失败: ${e.message}`);
-          return new Response(`Base64 解码失败\n\n日志:\n${logs.join("\n")}`, { status: 400 });
+          return new Response(`Base64 解码失败`, { status: 400 });
         }
       } else {
         nodes = content
@@ -76,24 +63,37 @@ export default {
               line.startsWith("hysteria://")
           );
       }
-
-      logs.push(`过滤后的节点数: ${nodes.length}`);
       
-      // 过滤掉包含127.0.0.1的节点
       nodes = nodes.filter((node) => !node.includes("127.0.0.1"));
       if (nodes.length === 0) {
-        logs.push("订阅中没有有效的节点");
-        return new Response(`订阅中没有有效的节点\n\n日志:\n${logs.join("\n")}`, { status: 400 });
+        return new Response(`订阅中没有有效的节点`, { status: 400 });
       }
 
-      // 随机选取指定数量的节点，如果不足，随机补齐到指定数量
       const selectedNodes = [];
-      while (selectedNodes.length < nodeCount) {
+      const testedNodes = new Set();
+      let passedNodesCount = 0;
+
+      while (selectedNodes.length < nodeCount && testedNodes.size < nodes.length) {
         const randomIndex = Math.floor(Math.random() * nodes.length);
-        selectedNodes.push(nodes[randomIndex]);
+        const node = nodes[randomIndex];
+
+        if (testedNodes.has(node)) {
+          continue;
+        }
+
+        testedNodes.add(node);
+        const { ipAddress, port } = extractIpAndPort(node);
+
+        if (isValidDomain(ipAddress) && isValidPort(port)) {
+          selectedNodes.push(node);
+          passedNodesCount++;
+        }
       }
 
-      // 处理节点名称
+      if (selectedNodes.length < nodeCount) {
+        return new Response(`没有足够的可用节点`, { status: 400 });
+      }
+
       const finalNodes = selectedNodes.map((node, index) => {
         const nameIndex = `节点${String(index + 1).padStart(2, "0")}`;
         if (node.startsWith("vmess://")) {
@@ -102,7 +102,6 @@ export default {
             decodedNode.ps = nameIndex;
             return "vmess://" + btoa(encodeUTF8(JSON.stringify(decodedNode)));
           } catch (e) {
-            logs.push(`VMess 节点解码失败: ${e.message}`);
             return node;
           }
         } else {
@@ -111,18 +110,47 @@ export default {
       });
 
       const finalContent = btoa(encodeUTF8(finalNodes.join("\n")));
-      logs.push(`最终输出内容: ${finalContent.substring(0, 100)}...`);
 
       return new Response(finalContent, {
         headers: { "Content-Type": "text/plain" },
       });
     } catch (error) {
-      logs.push(`处理出错: ${error.message}`);
-      return new Response(`处理出错\n\n日志:\n${logs.join("\n")}`, { status: 500 });
+      return new Response(`处理出错`, { status: 500 });
     }
   },
 };
 
 function encodeUTF8(input) {
   return new TextEncoder().encode(input).reduce((acc, byte) => acc + String.fromCharCode(byte), "");
+}
+
+function extractIpAndPort(node) {
+  try {
+    let url;
+    if (node.startsWith('vmess://')) {
+      const decodedNode = JSON.parse(atob(node.slice(8)));
+      url = new URL(`http://${decodedNode.add}:${decodedNode.port}`);
+    } else {
+      url = new URL(node);
+    }
+    return {
+      ipAddress: url.hostname,
+      port: url.port
+    };
+  } catch (e) {
+    return {
+      ipAddress: '',
+      port: ''
+    };
+  }
+}
+
+function isValidDomain(domain) {
+  const domainRegex = /^(?!:\/\/)([a-zA-Z0-9-_]+\.)*[a-zA-Z0-9][a-zA-Z0-9-_]+\.[a-zA-Z]{2,11}?$/;
+  return domainRegex.test(domain);
+}
+
+function isValidPort(port) {
+  const portNumber = parseInt(port, 10);
+  return portNumber >= 1 && portNumber <= 65535;
 }
