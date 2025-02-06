@@ -1,0 +1,113 @@
+export default {
+  async fetch(request, env) {
+    try {
+      const url = new URL(request.url);
+      const path = url.pathname.slice(1); // Extract the path after the "/"
+      
+      if (request.method === "GET") {
+        return await handleGetRequest(path, env);
+      } else if (request.method === "POST" && path === "store") {
+        return await handlePostRequest(request, env);
+      } else {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+    } catch (error) {
+      return new Response(`Internal Server Error: ${error.message}`, { status: 500 });
+    }
+  }
+};
+
+async function handleGetRequest(path, env) {
+  const passwordKey = await env.MERGED.get("password");
+  
+  if (path === passwordKey) {
+    return new Response(getHtmlContent(), { headers: { 'Content-Type': 'text/html' } });
+  } else if (path) {
+    const value = await env.MERGED.get(path);
+    if (value) {
+      return new Response(value, { headers: { 'Content-Type': 'text/plain' } });
+    } else {
+      return new Response("Not Found", { status: 404 });
+    }
+  } else {
+    return new Response("Key name cannot be empty.", { status: 400 });
+  }
+}
+
+async function handlePostRequest(request, env) {
+  try {
+    const { key, value } = await request.json();
+    const regex = /^[a-zA-Z0-9-_]{3,10}$/;
+    if (!regex.test(key)) {
+      return new Response("Invalid key format", { status: 400 });
+    }
+    await env.MERGED.put(key, value);
+    return new Response("Stored successfully", { status: 200 });
+  } catch (error) {
+    return new Response(`Bad Request: ${error.message}`, { status: 400 });
+  }
+}
+
+function getHtmlContent() {
+  return `
+    <!DOCTYPE html>
+    <html lang="zh">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>订阅节点合并</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        h1 { font-size: 20px; font-weight: bold; color: red; }
+        label { font-size: 16px; font-weight: bold; color: black; display: block; text-align: left; margin-top: 20px; }
+        textarea { width: 100%; height: 150px; margin-top: 10px; display: block; text-align: left; }
+        button { margin-top: 10px; padding: 10px 20px; cursor: pointer; display: block; text-align: left; }
+        #mergeButton { font-weight: bold; color: red; text-align: left; display: block; }
+        #output { width: 100%; height: 100px; margin-top: 10px; display: block; text-align: left; }
+        .left-align { text-align: left; display: block; margin-top: 10px; }
+        #customLink { width: 25%; min-width: 150px; padding: 5px; display: inline-block; }
+      </style>
+    </head>
+    <body>
+      <h1>订阅节点合并</h1>
+      <label for="input">待合并的节点</label>
+      <textarea id="input" placeholder="输入多个订阅链接或节点代码"></textarea>
+      <button id="mergeButton" onclick="mergeNodes()" class="left-align">开始合并</button>
+      <label for="output">合并后的 Base64 订阅</label>
+      <textarea id="output" readonly></textarea>
+      <br>
+      <div class="left-align">
+        <input type="text" id="customLink" placeholder="输入自定义合并后节点链接" minlength="3" maxlength="10">
+        <button onclick="generateLink()">生成合并后节点链接</button>
+      </div>
+      <p id="finalLink" class="left-align"></p>
+      <script>
+        function mergeNodes() {
+          const input = document.getElementById('input').value;
+          const lines = input.split('\\n').map(line => line.trim()).filter(line => line);
+          const mergedBase64 = btoa(lines.join('\\n'));
+          document.getElementById('output').value = mergedBase64;
+        }
+        function generateLink() {
+          const link = document.getElementById('customLink').value.trim();
+          const output = document.getElementById('output').value;
+          if (!link || !output) {
+            alert('请输入自定义链接和合并后的订阅内容！');
+            return;
+          }
+          fetch('/store', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: link, value: output })
+          }).then(response => response.text()).then(data => {
+            alert(data);
+            document.getElementById('finalLink').innerText = window.location.origin + '/' + link;
+          }).catch(error => {
+            alert('Error: ' + error.message);
+          });
+        }
+      </script>
+    </body>
+    </html>
+  `;
+}
