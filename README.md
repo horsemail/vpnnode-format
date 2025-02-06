@@ -9,3 +9,6 @@
 
 #可以直接cloudflare worker 部署。<br>
 绑定域名后，使用格式为 https://域名/https://订阅链接。<br>
+
+
+passwall1.js中增加 https://域名/节点数/https://订阅链接  中节点数部分
